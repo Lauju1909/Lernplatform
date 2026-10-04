@@ -30,7 +30,7 @@ def _get_app_dir() -> Path:
     """Ermittelt das Datenverzeichnis:
     1. Wenn der Ordner der .exe / des Skripts beschreibbar ist (Desktop, USB-Stick, Projektordner),
        wird direkt dieser Ordner als Speicherort genutzt, damit die JSON-Dateien direkt bei der .exe liegen.
-    2. Andernfalls (z. B. C:\\Program Files) Ausweichordner in %LOCALAPPDATA%\\VokabelMeister.
+    2. Andernfalls (z. B. C:\\Program Files) Ausweichordner in %LOCALAPPDATA%\\Lernplatform.
     """
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).resolve().parent
@@ -43,7 +43,7 @@ def _get_app_dir() -> Path:
         test.unlink()
         return exe_dir
     except Exception:
-        local_app = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "VokabelMeister"
+        local_app = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Lernplatform"
         local_app.mkdir(parents=True, exist_ok=True)
         return local_app
 

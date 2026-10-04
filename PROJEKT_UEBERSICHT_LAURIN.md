@@ -1,15 +1,15 @@
-# 📚 VokabelMeister – Projektübersicht & Entwicklungsbericht für Laurin
+# 📚 Lernplatform – Projektübersicht & Entwicklungsbericht für Laurin
 
-**Projekt:** VokabelMeister (Vokabel- & Begriffstrainer)  
+**Projekt:** Lernplatform (Vokabel- & Begriffstrainer)  
 **Status:** Stabil, hochperformant, sicherheitsgeprüft & Store-Ready  
 **Datum:** Oktober 2026  
 **Ziel:** Veröffentlichung im **Microsoft Store**  
 
 ---
 
-## 🎯 1. Was ist der VokabelMeister?
+## 🎯 1. Was ist die Lernplatform?
 
-Der VokabelMeister ist ein barrierefreier, intelligenter Vokabel- und Begriffstrainer für den Desktop (entwickelt in Python mit **PyQt6**). Er unterscheidet sich von herkömmlichen Apps durch folgende Kernfeatures:
+Die Lernplatform ist ein barrierefreier, intelligenter Vokabel- und Begriffstrainer für den Desktop (entwickelt in Python mit **PyQt6**). Sie unterscheidet sich von herkömmlichen Apps durch folgende Kernfeatures:
 
 1. **Vollständige Barrierefreiheit (Accessibility):**
    - Volle Unterstützung für Screenreader (JAWS, NVDA) über Windows UIAutomation.
@@ -76,7 +76,7 @@ Für die Microsoft-Store-Zertifizierung wurden alle Eingabekanäle gegen Abstür
 ## 📦 4. Aktueller Build-Stand
 
 Die fertige, aktualisierte Programmdatei liegt direkt im Projektordner:
-* **Pfad:** `C:\Users\user\Desktop\Meine Projekte\VokabelMeister\VokabelMeister.exe`
+* **Pfad:** `C:\Users\user\Desktop\Meine Projekte\Lernplatform\Lernplatform.exe`
 * **Größe:** ca. 40,9 MB
 * **Typ:** Eigenständige Windows-64-Bit-Anwendung (One-File, kein Konsolenfenster)
 * **Vorteil:** Die EXE organisiert sich beim ersten Start auf einem fremden Rechner automatisch selbst in einen sauberen Ordner inklusive Standard-Vokabeln.
@@ -86,7 +86,7 @@ Die fertige, aktualisierte Programmdatei liegt direkt im Projektordner:
 ## 🚀 5. Roadmap: Die nächsten Schritte für den Microsoft Store
 
 1. **MSIX Packaging:**
-   - Mit dem offiziellen Microsoft MSIX Packaging Tool wird aus der `VokabelMeister.exe` ein `.msix`-Paket erstellt.
+   - Mit dem offiziellen Microsoft MSIX Packaging Tool wird aus der `Lernplatform.exe` ein `.msix`-Paket erstellt.
 2. **Entwickler-Konto:**
    - Microsoft Partner Center Entwicklerkonto anlegen (einmalige Registrierungsgebühr ca. 19 $ für Privatpersonen).
 3. **Store-Assets:**

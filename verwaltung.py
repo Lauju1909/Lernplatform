@@ -1,6 +1,6 @@
 # verwaltung.py – Vokabelverwaltung, Tabellenansicht & Vokabel-Dialoge
 """
-Dieses Modul bündelt das gesamte Vokabelverwaltungs-Feature der VokabelMeister:
+Dieses Modul bündelt das gesamte Vokabelverwaltungs-Feature der Lernplatform:
 1. AddVokabelDialog:
    - Erstellen neuer Vokabeln mit Kategorieauswahl, Richtungswarnung und Flaggen
 2. DeleteDialog:

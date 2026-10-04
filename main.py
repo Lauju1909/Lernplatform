@@ -1,6 +1,6 @@
-# main.py – VokabelMeister Einstiegspunkt, Hauptfenster & Schüler-Setup
+# main.py – Lernplatform Einstiegspunkt, Hauptfenster & Schüler-Setup
 """
-Haupteinstiegspunkt und Hauptfenster der VokabelMeister:
+Haupteinstiegspunkt und Hauptfenster der Lernplatform:
 1. Schüler-Selbstorganisation:
    - Lose gestartete EXE organisiert sich vollautomatisch selbst (Ordner erstellen,
      kopieren, Standard-JSON anlegen, alte EXE entfernen).
@@ -98,7 +98,7 @@ def _write_default_json_files(target_dir: Path) -> None:
 def _ensure_self_contained_folder() -> None:
     """Wenn die kompilierte EXE lose (z. B. auf dem Desktop oder im Download-Ordner)
     ohne vokabeln.json ausgeführt wird, organisiert sie sich automatisch selbst:
-    1. Erstellt einen neuen Ordner 'VokabelMeister' am aktuellen Ort
+    1. Erstellt einen neuen Ordner 'Lernplatform' am aktuellen Ort
     2. Schreibt die 2 JSON-Dateien (vokabeln.json und kategorien.json) dort hinein
     3. Kopiert die EXE in diesen Ordner, löscht die lose Datei und startet die App
     """
@@ -120,13 +120,13 @@ def _ensure_self_contained_folder() -> None:
         if (current_dir / "vokabeln.json").exists():
             return
 
-    # Wenn der Ordner bereits 'VokabelMeister' heißt -> nur JSON-Dateien anlegen
-    if current_dir.name.lower() == "vokabelmeister":
+    # Wenn der Ordner bereits 'Lernplatform' heißt -> nur JSON-Dateien anlegen
+    if current_dir.name.lower() == "lernplatform":
         _write_default_json_files(current_dir)
         return
 
     # Die EXE liegt lose (z. B. auf dem Desktop eines Mitschülers):
-    target_dir = current_dir / "VokabelMeister"
+    target_dir = current_dir / "Lernplatform"
     target_dir.mkdir(parents=True, exist_ok=True)
     target_exe = target_dir / current_exe.name
 
@@ -161,11 +161,11 @@ def _setup_crash_logging() -> None:
         log_dir = Path(sys.executable).parent
     else:
         log_dir = Path(__file__).parent
-    log_file = log_dir / "vokabelmeister_crash.log"
+    log_file = log_dir / "lernplatform_crash.log"
 
     try:
         import faulthandler
-        fault_log = open(str(log_dir / "vokabelmeister_faulthandler.log"), "a", encoding="utf-8")
+        fault_log = open(str(log_dir / "lernplatform_faulthandler.log"), "a", encoding="utf-8")
         faulthandler.enable(file=fault_log)
     except Exception:
         pass
@@ -184,7 +184,7 @@ def _setup_crash_logging() -> None:
         app = QApplication.instance()
         if app is not None:
             dlg = QMessageBox()
-            dlg.setWindowTitle("VokabelMeister – Unerwarteter Fehler")
+            dlg.setWindowTitle("Lernplatform – Unerwarteter Fehler")
             dlg.setIcon(QMessageBox.Icon.Critical)
             dlg.setText(
                 "Ein unerwarteter Fehler ist aufgetreten.\n\n"
@@ -200,14 +200,14 @@ def _setup_crash_logging() -> None:
 
 # ── Hauptfenster mit Sidebar & Live-Ordnerüberwachung ─────────────────────────
 class MainWindow(QMainWindow):
-    """Hauptanwendungsfenster der VokabelMeister."""
+    """Hauptanwendungsfenster der Lernplatform."""
 
     def __init__(self, trainer: VokabelTrainer) -> None:
         super().__init__()
         self._trainer = trainer
-        self.setWindowTitle("VokabelMeister")
+        self.setWindowTitle("Lernplatform")
         self.setMinimumSize(960, 600)
-        self.setAccessibleName(" VokabelMeister Hauptfenster")
+        self.setAccessibleName(" Lernplatform Hauptfenster")
         self._build_ui()
         self._init_folder_watcher()
         self._navigate(1)  # Startet auf Kategorien
@@ -354,9 +354,9 @@ class MainWindow(QMainWindow):
         sb_layout.setContentsMargins(12, 20, 12, 20)
         sb_layout.setSpacing(4)
 
-        app_title = QLabel("VokabelMeister")
+        app_title = QLabel("Lernplatform")
         app_title.setObjectName("appTitle")
-        app_title.setAccessibleName(" VokabelMeister")
+        app_title.setAccessibleName(" Lernplatform")
         sb_layout.addWidget(app_title)
 
         nav_items = [
@@ -424,7 +424,7 @@ class MainWindow(QMainWindow):
         dlg.setIcon(QMessageBox.Icon.Information)
         dlg.setText(
             "🌟 HERZLICHEN GLÜCKWUNSCH! 🌟\n\n"
-            "Du hast das geheime Entwickler-Easter-Egg der VokabelMeister entdeckt!\n\n"
+            "Du hast das geheime Entwickler-Easter-Egg der Lernplatform entdeckt!\n\n"
             "Wer sich Anleitungen so aufmerksam und gründlich durchliest, beweist echte Meister-Disziplin.\n"
             "Viel Erfolg beim Lernen – du bist auf dem besten Weg zur Bestnote! 🚀"
         )
@@ -470,7 +470,7 @@ class MainWindow(QMainWindow):
 def _parse_arguments() -> argparse.Namespace:
     """Parst optionale Startargumente für Debugging."""
     parser = argparse.ArgumentParser(
-        prog="VokabelMeister",
+        prog="Lernplatform",
         description="Barrierefreier, intelligenter Vokabel- und Begriffstrainer",
     )
     parser.add_argument(
@@ -508,8 +508,8 @@ def main() -> None:
 
     # 4. QApplication zuerst starten (muss vor allem anderen Qt-Code sein)
     app = QApplication(sys.argv)
-    app.setApplicationName("VokabelMeister")
-    app.setOrganizationName("VokabelMeister")
+    app.setApplicationName("Lernplatform")
+    app.setOrganizationName("Lernplatform")
     app.setStyleSheet(STYLE)
 
     # 5. Trainer initialisieren (erst nach QApplication!)

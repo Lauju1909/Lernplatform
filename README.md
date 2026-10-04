@@ -1,13 +1,13 @@
-# VokabelMeister 📖
+# Lernplatform 📖
 
 > **Barrierefreier schriftlicher Vokabel- und Begriffstrainer für Windows (PyQt6)**  
 > *100% barrierefrei für Blinde & Sehbehinderte (NVDA & JAWS) – Reine schriftliche Abfrage zum aktiven Trainieren der Rechtschreibung*
 
 ---
 
-## 🌟 Über VokabelMeister
+## 🌟 Über Lernplatform
 
-**VokabelMeister** ist ein spezialisierter Trainer für Fremdsprachen, Fachbegriffe, Formeln und Tastaturkürzel. Im Gegensatz zu reinen Multiple-Choice-Trainern setzt VokabelMeister auf das **aktive Eintippen der Antwort** (schriftliche Abfrage).
+**Lernplatform** ist ein spezialisierter Trainer für Fremdsprachen, Fachbegriffe, Formeln und Tastaturkürzel. Im Gegensatz zu reinen Multiple-Choice-Trainern setzt Lernplatform auf das **aktive Eintippen der Antwort** (schriftliche Abfrage).
 
 ### ✨ Hauptfunktionen
 
@@ -32,14 +32,14 @@
 * **🌐 Word-Bridge & Live-Übersetzung:** Überwacht Word-Dateien (.docx) live und übersetzt Vokabeln mit `/übd` oder `/übe` automatisch im Hintergrund (MyMemory API).
 * **⚡ Hochperformante Vokabelverwaltung:** Komplett ohne UI-Freezes, mit blitzschnellem Suchen, Filtern und Bearbeiten von tausenden Vokabeln.
 * **📥 Universal-Import:** Importiere eigene Listen direkt aus **Word (.docx)** oder Textdateien (.txt, .csv).
-* **🔒 100% Offline & Lokal:** Daten werden sicher direkt im App-Ordner oder in `%LOCALAPPDATA%\VokabelMeister\` gespeichert.
+* **🔒 100% Offline & Lokal:** Daten werden sicher direkt im App-Ordner oder in `%LOCALAPPDATA%\Lernplatform\` gespeichert.
 
 ---
 
 ## 💾 Download (Windows EXE)
 
-Die fertige Windows-Anwendung kann direkt unter [Releases](https://github.com/Lauju1909/VokabelMeister/releases) heruntergeladen werden:
-* **`VokabelMeister.exe`** – Standalone-Anwendung ohne Installation. Einfach doppelklicken und loslegen!
+Die fertige Windows-Anwendung kann direkt unter [Releases](https://github.com/Lauju1909/Lernplatform/releases) heruntergeladen werden:
+* **`Lernplatform.exe`** – Standalone-Anwendung ohne Installation. Einfach doppelklicken und loslegen!
 
 ---
 
@@ -53,7 +53,7 @@ venv\Scripts\activate
 # Abhängigkeiten installieren
 pip install -r requirements.txt
 
-# VokabelMeister starten
+# Lernplatform starten
 python main.py
 ```
 

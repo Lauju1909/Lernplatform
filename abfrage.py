@@ -1,6 +1,6 @@
 # abfrage.py – Vokabel-Abfrage, Lernkarten-View & Intelligente Antworterkennung
 """
-Dieses Modul bündelt das gesamte Abfrage-Feature der VokabelMeister:
+Dieses Modul bündelt das gesamte Abfrage-Feature der Lernplatform:
 1. Intelligente Antworterkennung & Fehlertoleranz:
    - Damerau-Levenshtein Distanzberechnung für automatisches Verzeihen von Tippfehlern
    - Erweiterung von Klammerzusätzen und Schrägstrichformen (z. B. "ein/e", "(in)", "/r/s")

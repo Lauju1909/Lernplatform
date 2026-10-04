@@ -3,7 +3,7 @@
 Ermöglicht das Öffnen von Word-Dokumenten (.docx) und überwacht die Datei live.
 Wird im Dokument ein Befehl wie /übd (übersetze auf Deutsch) oder /übe (übersetze auf Englisch)
 gefunden und in Word gespeichert (Strg+S), werden alle unvollständigen Vokabelzeilen
-automatisch online übersetzt und direkt in die VokabelMeister (vokabeln.json) importiert.
+automatisch online übersetzt und direkt in die Lernplatform (vokabeln.json) importiert.
 
 Übersetzungs-API: MyMemory (https://mymemory.translated.net)
   – Kostenlos, offiziell, ToS-konform, kein API-Schlüssel nötig.
@@ -168,7 +168,7 @@ class OnlineTranslator:
             )
             req = urllib.request.Request(
                 url,
-                headers={"User-Agent": "VokabelMeister/2.5 (educational vocabulary trainer)"},
+                headers={"User-Agent": "Lernplatform/2.5 (educational vocabulary trainer)"},
             )
             with urllib.request.urlopen(req, timeout=8) as response:
                 raw = response.read().decode("utf-8")
@@ -424,7 +424,7 @@ class WordCompanionDialog(QDialog):
             "1. Schreibe deine Wörter in Word (z. B. <i>Monday</i>, <i>Tuesday</i> ...)<br>"
             "2. Schreibe am Ende z. B. <b>/übd</b> (für Deutsch) oder <b>/übe</b> (für Englisch)<br>"
             "3. Drücke in Word <b>Strg + S</b> (Speichern) – die Wörter werden automatisch "
-            "übersetzt und direkt in die VokabelMeister importiert!"
+            "übersetzt und direkt in die Lernplatform importiert!"
         )
         info_text.setWordWrap(True)
         info_text.setStyleSheet("color: #ccd6f6; font-size: 12px; line-height: 1.4;")

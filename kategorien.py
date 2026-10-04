@@ -1,6 +1,6 @@
 # kategorien.py – Kategorien-Verwaltung, Kachelkarten & Kategorie-Dialoge
 """
-Dieses Modul bündelt das gesamte Kategorien-Feature der VokabelMeister:
+Dieses Modul bündelt das gesamte Kategorien-Feature der Lernplatform:
 1. Vektor-Flaggen-Icon-Generator:
    - Detailgetreue Flaggen-Icons für Sprachen im Dropdown (Deutsch, Englisch, Französisch, etc.)
 2. Kategorie-Dialoge:

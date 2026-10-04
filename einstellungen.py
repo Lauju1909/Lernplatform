@@ -1,6 +1,6 @@
 # einstellungen.py – Einstellungen, feste Abfragerichtung & Einstellungs-View
 """
-Dieses Modul verwaltet die Anwendungseinstellungen der VokabelMeister:
+Dieses Modul verwaltet die Anwendungseinstellungen der Lernplatform:
 1. Konfigurations-Persistenz:
    - Speichert und lädt einstellungen.json (Abfragerichtung, Kategorien-Konfiguration)
 2. DirectionSettingsDialog:
@@ -546,7 +546,7 @@ class DirectionSettingsDialog(QDialog):
 
 # ── Einstellungen-View (Hauptansicht für die Seitenleiste) ────────────────────
 class EinstellungenView(QWidget):
-    """Zentrale Einstellungsansicht der VokabelMeister:
+    """Zentrale Einstellungsansicht der Lernplatform:
     - Feste Abfragerichtung aktivieren/deaktivieren und konfigurieren
     - Tastaturnavigation & Screenreader-Status
     - Datenverwaltung & Ordnerzugriff

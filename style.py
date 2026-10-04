@@ -1,6 +1,6 @@
-# style.py – VokabelMeister Stylesheet, UI-Hilfsfunktionen und barrierefreie Basis-Widgets
+# style.py – Lernplatform Stylesheet, UI-Hilfsfunktionen und barrierefreie Basis-Widgets
 """
-Dieses Modul definiert das Designsystem der VokabelMeister (Dark Theme mit
+Dieses Modul definiert das Designsystem der Lernplatform (Dark Theme mit
 hohem Kontrast gemäß WCAG AA), berechnet visuelle und auditive Feedback-
 Farbwerte für Screenreader und Braillezeilen und stellt barrierefreie
 Qt-Eingabeelemente bereit.
