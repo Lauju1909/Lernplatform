@@ -28,8 +28,11 @@
   * 🔬 **Formeln:** Formeln und mathematisch-naturwissenschaftliche Erklärungen
   * 💻 **Befehle:** Tastaturkürzel und ihre Funktionen (inkl. Screenreader-Befehle)
   * ➕ **Eigene Kategorien:** Beliebig viele neue Kategorien anlegen
+* **🔤 Akustische & Braille-Buchstabierhilfe:** Bei falschen Antworten buchstabiert die App das Wort Zeichen für Zeichen und zeigt es verweildauer-gesteuert auf der Braillezeile an.
+* **🌐 Word-Bridge & Live-Übersetzung:** Überwacht Word-Dateien (.docx) live und übersetzt Vokabeln mit `/übd` oder `/übe` automatisch im Hintergrund (MyMemory API).
+* **⚡ Hochperformante Vokabelverwaltung:** Komplett ohne UI-Freezes, mit blitzschnellem Suchen, Filtern und Bearbeiten von tausenden Vokabeln.
 * **📥 Universal-Import:** Importiere eigene Listen direkt aus **Word (.docx)** oder Textdateien (.txt, .csv).
-* **🔒 100% Offline & Lokal:** Daten werden sicher in `%LOCALAPPDATA%\VokabelMeister\` gespeichert.
+* **🔒 100% Offline & Lokal:** Daten werden sicher direkt im App-Ordner oder in `%LOCALAPPDATA%\VokabelMeister\` gespeichert.
 
 ---
 

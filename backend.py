@@ -1,34 +1,41 @@
-# backend.py – VokabelMeister Backend (Datenmodell, Lernalgorithmus, JSON-Speicher, Datei-Import)
+# backend.py – Datenmodell, Persistenz, Konfiguration & Lernalgorithmus (Trainer)
+"""
+Dieses Modul verwaltet die gesamte Datenhaltung, Konfiguration und Lernlogik:
+- AppDir-Ermittlung (automatisch lokaler Ordner oder %LOCALAPPDATA%)
+- Kategorien-Konfiguration und Standardsprachen
+- Vokabel-Datenmodell mit Score- und Gewichtungsberechnung
+- Persistenz: Laden & atomares Speichern von JSON-Dateien
+- Volle Kompatibilität zu Klartext-JSON und alten Base64+zlib (DEFLATE) Dateien
+- VokabelTrainer: Verwaltung von Vokabeln, Kategorien, gewichteter Zufallsauswahl,
+  2er-Streak-Schutz und 30-stufigem Undo-Stapel.
+"""
 from __future__ import annotations
 
+import base64
 import json
+import os
 import random
-import re
+import shutil
+import sys
+import time
+import zlib
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-# Speicherort für Benutzerdaten (Store-kompatibel, funktioniert auf jedem PC)
-import sys as _sys
-import os as _os
-import shutil as _shutil
 
+# ── Speicherort für Anwendungsdaten ───────────────────────────────────────────
 def _get_app_dir() -> Path:
     """Ermittelt das Datenverzeichnis:
-    1. Liegt neben der .exe / dem Skript eine 'vokabeln.json', wird dieser Ordner genutzt.
-    2. Liegt in %LOCALAPPDATA%\\VokabelMeister eine 'vokabeln.json', wird diese genutzt.
-    3. Andernfalls der Ordner der .exe (falls beschreibbar) oder %LOCALAPPDATA%\\VokabelMeister.
+    1. Wenn der Ordner der .exe / des Skripts beschreibbar ist (Desktop, USB-Stick, Projektordner),
+       wird direkt dieser Ordner als Speicherort genutzt, damit die JSON-Dateien direkt bei der .exe liegen.
+    2. Andernfalls (z. B. C:\\Program Files) Ausweichordner in %LOCALAPPDATA%\\VokabelMeister.
     """
-    if getattr(_sys, "frozen", False):
-        exe_dir = Path(_sys.executable).parent
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
     else:
-        exe_dir = Path(__file__).parent
-
-    if (exe_dir / "vokabeln.json").exists():
-        return exe_dir
-
-    local_app = Path(_os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "VokabelMeister"
-    if (local_app / "vokabeln.json").exists():
-        return local_app
+        exe_dir = Path(__file__).resolve().parent
 
     try:
         test = exe_dir / ".write_test"
@@ -36,22 +43,27 @@ def _get_app_dir() -> Path:
         test.unlink()
         return exe_dir
     except Exception:
+        local_app = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "VokabelMeister"
         local_app.mkdir(parents=True, exist_ok=True)
         return local_app
 
-APP_DIR = _get_app_dir()
-DATA_FILE = APP_DIR / "vokabeln.json"
-KATEGORIEN_FILE = APP_DIR / "kategorien.json"
+
+APP_DIR: Path = _get_app_dir()
+DATA_FILE: Path = APP_DIR / "vokabeln.json"
+KATEGORIEN_FILE: Path = APP_DIR / "kategorien.json"
+LAST_SAVED_MTIME: float = 0.0
+LAST_SAVED_TIME: float = 0.0
 
 
-# Häufig genutzte Sprachen
+# ── Häufig genutzte Sprachen ──────────────────────────────────────────────────
 STANDARD_SPRACHEN: list[str] = [
     "Englisch", "Deutsch", "Französisch", "Spanisch", "Italienisch",
     "Latein", "Russisch", "Japanisch", "Chinesisch", "Türkisch",
     "Portugiesisch", "Niederländisch", "Griechisch", "Polnisch", "Arabisch",
 ]
 
-# Standard-Kategorien mit Fragetext für Vorder- und Rückseite
+
+# ── Standard-Kategorien mit Fragetext für Vorder- und Rückseite ───────────────
 DEFAULT_KATEGORIEN: dict[str, dict[str, str]] = {
     "Sprache": {
         "icon":         "🌍",
@@ -87,10 +99,11 @@ DEFAULT_KATEGORIEN: dict[str, dict[str, str]] = {
     },
 }
 
+
 def load_kategorien() -> dict[str, dict[str, str]]:
-    """Lädt Standard- und benutzerdefinierte Kategorien."""
+    """Lädt Standard- und benutzerdefinierte Kategorien aus kategorien.json."""
     APP_DIR.mkdir(parents=True, exist_ok=True)
-    kats = {k: dict(v) for k, v in DEFAULT_KATEGORIEN.items()}
+    kats: dict[str, dict[str, str]] = {k: dict(v) for k, v in DEFAULT_KATEGORIEN.items()}
     if KATEGORIEN_FILE.exists():
         try:
             with open(KATEGORIEN_FILE, "r", encoding="utf-8") as f:
@@ -101,53 +114,70 @@ def load_kategorien() -> dict[str, dict[str, str]]:
             pass
     return kats
 
+
 def save_kategorien(kategorien: dict[str, dict[str, str]]) -> None:
-    """Speichert benutzerdefinierte Kategorien in JSON."""
+    """Speichert benutzerdefinierte Kategorien atomar in JSON."""
     APP_DIR.mkdir(parents=True, exist_ok=True)
     custom = {k: v for k, v in kategorien.items() if k not in DEFAULT_KATEGORIEN or v != DEFAULT_KATEGORIEN[k]}
-    with open(KATEGORIEN_FILE, "w", encoding="utf-8") as f:
-        json.dump(custom, f, ensure_ascii=False, indent=2)
+    tmp_file = KATEGORIEN_FILE.with_suffix(".json.tmp")
+    try:
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(custom, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_file, KATEGORIEN_FILE)
+    except Exception:
+        if tmp_file.exists():
+            tmp_file.unlink(missing_ok=True)
+        raise
+
 
 KATEGORIEN: dict[str, dict[str, str]] = load_kategorien()
 KATEGORIE_NAMEN: list[str] = list(KATEGORIEN.keys())
 
-# Standard-Beispielvokabeln für den ersten Start
-DEFAULT_VOKABELN: list[dict] = [
-    {"front": "apple",                    "back": "Apfel",                              "kategorie": "Sprache",    "lang_front": "Englisch", "lang_back": "Deutsch", "attempts": 0, "correct": 0},
-    {"front": "house",                    "back": "Haus",                               "kategorie": "Sprache",    "lang_front": "Englisch", "lang_back": "Deutsch", "attempts": 0, "correct": 0},
-    {"front": "Photosynthese",            "back": "Pflanzen erzeugen mit Licht Zucker", "kategorie": "Fachwörter", "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
-    {"front": "E = mc²",                  "back": "Masse-Energie-Äquivalenz (Einstein)","kategorie": "Formeln",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
-    {"front": "a² + b² = c²",             "back": "Satz des Pythagoras",                "kategorie": "Formeln",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
-    {"front": "Windows + D",              "back": "Desktop anzeigen",                   "kategorie": "Befehle",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
-    {"front": "Insert + F7",              "back": "Linkliste öffnen in JAWS",           "kategorie": "Befehle",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
-    {"front": "Insert + Pfeil nach unten","back": "Alles vorlesen ab Cursor in JAWS",   "kategorie": "Befehle",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
+
+# ── Standard-Beispielvokabeln für den ersten Start ────────────────────────────
+DEFAULT_VOKABELN: list[dict[str, Any]] = [
+    {"front": "apple",                     "back": "Apfel",                              "kategorie": "Sprache",    "lang_front": "Englisch", "lang_back": "Deutsch", "attempts": 0, "correct": 0},
+    {"front": "house",                     "back": "Haus",                               "kategorie": "Sprache",    "lang_front": "Englisch", "lang_back": "Deutsch", "attempts": 0, "correct": 0},
+    {"front": "Photosynthese",             "back": "Pflanzen erzeugen mit Licht Zucker", "kategorie": "Fachwörter", "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
+    {"front": "E = mc²",                   "back": "Masse-Energie-Äquivalenz (Einstein)","kategorie": "Formeln",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
+    {"front": "a² + b² = c²",              "back": "Satz des Pythagoras",                "kategorie": "Formeln",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
+    {"front": "Windows + D",               "back": "Desktop anzeigen",                   "kategorie": "Befehle",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
+    {"front": "Insert + F7",               "back": "Linkliste öffnen in JAWS",           "kategorie": "Befehle",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
+    {"front": "Insert + Pfeil nach unten", "back": "Alles vorlesen ab Cursor in JAWS",   "kategorie": "Befehle",    "lang_front": "",         "lang_back": "",        "attempts": 0, "correct": 0},
 ]
 
 
+# ── Datenmodell: Vokabel ───────────────────────────────────────────────────────
 @dataclass
 class Vokabel:
+    """Repräsentiert eine einzelne Lernkarte."""
     front:      str
     back:       str
     kategorie:  str = "Sprache"
-    lang_front: str = "Englisch"  # Sprache der Vorderseite (linke Sprache)
-    lang_back:  str = "Deutsch"   # Sprache der Rückseite (rechte Sprache)
+    lang_front: str = "Englisch"  # Sprache der Vorderseite (linke Spalte)
+    lang_back:  str = "Deutsch"   # Sprache der Rückseite (rechte Spalte)
     attempts:   int = 0           # Anzahl Abfragen
     correct:    int = 0           # Anzahl richtige Antworten
 
     @property
     def score(self) -> float:
-        # Prozentwert 0–100, bei neuen Vokabeln 0
-        if self.attempts == 0:
+        """Erfolgsquote 0.0–100.0 Prozent. Bei neuen Vokabeln 0.0.
+        Wird auf [0, 100] begrenzt, um bei fehlerhaften Rohdaten keinen Überlauf zu erzeugen.
+        """
+        if self.attempts <= 0:
             return 0.0
-        return round((self.correct / self.attempts) * 100.0, 1)
+        raw = (self.correct / self.attempts) * 100.0
+        return round(min(100.0, max(0.0, raw)), 1)
 
     @property
     def weight(self) -> float:
-        # Gewicht für Zufallsauswahl: schlechte Vokabeln erhalten höheres Gewicht
-        return (100.0 - self.score) + 10.0
+        """Gewicht für die Zufallsauswahl: schwächere Vokabeln erhalten ein höheres Gewicht.
+        Minimum 1.0, damit random.choices() niemals mit nicht-positiven Gewichten fehlschlägt.
+        """
+        return max(1.0, (100.0 - self.score) + 10.0)
 
-    def to_dict(self) -> dict:
-        # Serialisierung in Dictionary für JSON-Speicherung
+    def to_dict(self) -> dict[str, Any]:
+        """Serialisiert die Vokabel in ein Dictionary für JSON."""
         return {
             "front":      self.front,
             "back":       self.back,
@@ -159,117 +189,228 @@ class Vokabel:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Vokabel":
-        # Deserialisierung aus Dictionary mit Abwärtskompatibilität
-        return cls(
-            front=d.get("front", ""),
-            back=d.get("back", ""),
-            kategorie=d.get("kategorie", "Sprache"),
-            lang_front=d.get("lang_front", "Englisch"),
-            lang_back=d.get("lang_back", "Deutsch"),
-            attempts=int(d.get("attempts", 0)),
-            correct=int(d.get("correct", 0)),
+    def from_dict(cls, d: dict[str, Any]) -> Vokabel:
+        """Deserialisiert eine Vokabel mit voller Abwärts- und Formatkompatibilität.
+        Unterstützt:
+        - Standard-Format: front, back, kategorie, lang_front, lang_back, attempts, correct
+        - Legacy-Vokabeltrainer: en, de, abfragen, score_prozent
+        - Alternative Feldnamen: vorderseite/rueckseite, wort/uebersetzung, term/definition, question/answer
+        - Automatische Spracherkennung aus Feldnamen (en, fr, es, la, it)
+        """
+        attempts = max(0, int(d.get("attempts", d.get("abfragen", 0))))
+
+        if "correct" in d:
+            try:
+                correct = max(0, int(d["correct"]))
+            except (ValueError, TypeError):
+                correct = 0
+        elif "score_prozent" in d:
+            try:
+                sp = float(d["score_prozent"])
+                correct = max(0, int(round(attempts * sp / 100.0)))
+            except (ValueError, TypeError):
+                correct = 0
+        else:
+            correct = 0
+
+        front = (
+            d.get("front") or d.get("en") or d.get("vorderseite") or
+            d.get("wort") or d.get("word") or d.get("question") or
+            d.get("frage") or d.get("term") or d.get("begriff") or ""
         )
+        back = (
+            d.get("back") or d.get("de") or d.get("rueckseite") or
+            d.get("uebersetzung") or d.get("translation") or d.get("answer") or
+            d.get("antwort") or d.get("definition") or d.get("bedeutung") or ""
+        )
+
+        lang_front = d.get("lang_front")
+        lang_back = d.get("lang_back")
+        if not lang_front or not lang_back:
+            if "en" in d and "de" in d:
+                lang_front, lang_back = "Englisch", "Deutsch"
+            elif "fr" in d and "de" in d:
+                lang_front, lang_back = "Französisch", "Deutsch"
+            elif "es" in d and "de" in d:
+                lang_front, lang_back = "Spanisch", "Deutsch"
+            elif "la" in d and "de" in d:
+                lang_front, lang_back = "Latein", "Deutsch"
+            elif "it" in d and "de" in d:
+                lang_front, lang_back = "Italienisch", "Deutsch"
+            else:
+                lang_front = lang_front or "Englisch"
+                lang_back = lang_back or "Deutsch"
+
+        kategorie = d.get("kategorie", "Sprache")
+
+        return cls(
+            front=str(front).strip(),
+            back=str(back).strip(),
+            kategorie=str(kategorie).strip() or "Sprache",
+            lang_front=str(lang_front).strip() or "Englisch",
+            lang_back=str(lang_back).strip() or "Deutsch",
+            attempts=attempts,
+            correct=correct,
+        )
+
+
+# ── Persistenz & Datei-Parser ─────────────────────────────────────────────────
+def _extract_dict_list(parsed: object) -> list[dict[str, Any]]:
+    """Extrahiert eine Liste von Dictionaries aus einem beliebigen JSON-Objekt."""
+    if isinstance(parsed, list):
+        return [x for x in parsed if isinstance(x, dict)]
+    if isinstance(parsed, dict):
+        for key in ("vokabeln", "vocabularies", "words", "cards", "items", "data", "cards_list"):
+            if key in parsed and isinstance(parsed[key], list):
+                return [x for x in parsed[key] if isinstance(x, dict)]
+    return []
+
+
+def _parse_vokabel_file(file_path: Path) -> list[Vokabel]:
+    """Liest und dekodiert eine Vokabeldatei – unterstützt Klartext-JSON,
+    in Dictionaries verschachtelte Listen sowie Base64 + zlib (DEFLATE)
+    komprimierte Dateien alter Vokabeltrainer.
+    """
+    _MAX_JSON_SIZE = 50 * 1024 * 1024  # 50 MB Limit für importierte JSON-Dateien
+
+    if not file_path.exists():
+        return []
+    try:
+        stat = file_path.stat()
+        if stat.st_size == 0:
+            return []
+        if stat.st_size > 50 * 1024 * 1024:  # 50 MB
+            return []
+        raw_bytes = file_path.read_bytes()
+    except Exception:
+        return []
+
+    # 1. Versuch: Direkt als JSON dekodieren
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            text = raw_bytes.decode(enc).strip()
+            if text.startswith(("[", "{")):
+                parsed = json.loads(text)
+                items = _extract_dict_list(parsed)
+                if items:
+                    voks = [Vokabel.from_dict(d) for d in items if isinstance(d, dict)]
+                    valid_voks = [v for v in voks if v.front and v.back]
+                    if valid_voks:
+                        return valid_voks
+        except Exception:
+            continue
+
+    # 2. Versuch: Base64 + zlib (DEFLATE) Dekomprimierung (Format alter Vokabeltrainer)
+    try:
+        clean_b64 = raw_bytes.strip()
+        decoded = base64.b64decode(clean_b64)
+        decompressed = zlib.decompress(decoded)
+        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                dec_text = decompressed.decode(enc).strip()
+                if dec_text.startswith(("[", "{")):
+                    parsed = json.loads(dec_text)
+                    items = _extract_dict_list(parsed)
+                    if items:
+                        voks = [Vokabel.from_dict(d) for d in items if isinstance(d, dict)]
+                        valid_voks = [v for v in voks if v.front and v.back]
+                        if valid_voks:
+                            return valid_voks
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    return []
 
 
 def load_vokabeln() -> list[Vokabel]:
     """Lädt Vokabeln aus der JSON-Datei.
-    Existiert keine Datei oder ist sie leer, wird eine leere Liste zurückgegeben.
-    Es werden niemals automatisch Standardvokabeln injiziert oder hinzugefügt.
+    Prüft:
+    1. DATA_FILE (vokabeln.json im App-Verzeichnis)
+    2. Ordner der .exe (falls DATA_FILE abweicht)
+    3. Durchsucht das Verzeichnis nach anderen hineingeschobenen *.json-Dateien
     """
     APP_DIR.mkdir(parents=True, exist_ok=True)
-    if not DATA_FILE.exists():
-        return []
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, list):
-            return []
-        return [Vokabel.from_dict(d) for d in data if isinstance(d, dict)]
-    except Exception:
-        return []
+
+    # 1. Standard-Datei (DATA_FILE) laden falls vorhanden
+    if DATA_FILE.exists():
+        voks = _parse_vokabel_file(DATA_FILE)
+        if voks:
+            return voks
+
+    # 2. Ordner der EXE prüfen (falls DATA_FILE abweichend)
+    exe_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    exe_vok = exe_dir / "vokabeln.json"
+    if exe_vok != DATA_FILE and exe_vok.exists():
+        voks = _parse_vokabel_file(exe_vok)
+        if voks:
+            return voks
+
+    # 3. Durchsuche den Ordner nach anderen vorhandenen JSON-Dateien
+    search_dirs = [APP_DIR]
+    if exe_dir not in search_dirs:
+        search_dirs.append(exe_dir)
+
+    for sdir in search_dirs:
+        if not sdir.exists():
+            continue
+        candidates = sorted(sdir.glob("*.json"), key=lambda p: (0 if "vokabel" in p.name.lower() else 1, p.name))
+        for cand in candidates:
+            if cand.name.lower() in ("kategorien.json", "kategorien.json.tmp", "vokabeln.json.tmp"):
+                continue
+            if cand == DATA_FILE:
+                continue
+            voks = _parse_vokabel_file(cand)
+            if voks:
+                return voks
+
+    return []
 
 
 def save_vokabeln(vokabeln: list[Vokabel]) -> None:
-    # Speichert alle Vokabeln in die JSON-Datei
+    """Speichert alle Vokabeln atomar in die JSON-Datei.
+    Schreibt zuerst in eine temporäre Datei und ersetzt dann die Originaldatei —
+    so bleibt die Datenbank auch bei einem Stromausfall oder Absturz intakt.
+    Aktualisiert LAST_SAVED_MTIME zur Vermeidung von Fehlalarmen beim Datei-Watcher.
+    """
+    global LAST_SAVED_MTIME, LAST_SAVED_TIME
     APP_DIR.mkdir(parents=True, exist_ok=True)
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump([v.to_dict() for v in vokabeln], f, ensure_ascii=False, indent=2)
-
-
-def split_line(line: str) -> tuple[str, str] | None:
-    # Zeile in (Vorderseite, Rückseite) aufteilen – trennt bei |, Tab, ;, Gedankenstrich oder Minus (egal ob mit/ohne Leerzeichen)
-    line = line.strip()
-    if not line or line.startswith("#"):
-        return None
-    # 1. Spezifische Trenner (Pipe, Tab, Semikolon)
-    for sep in ["|", "\t", ";"]:
-        if sep in line:
-            a, b = line.split(sep, 1)
-            a, b = a.strip(), b.strip()
-            if a and b:
-                return a, b
-    # 2. Gedankenstriche (En-Dash – und Em-Dash — aus Word)
-    for sep in ["\u2013", "\u2014"]:
-        if sep in line:
-            a, b = line.split(sep, 1)
-            a, b = a.strip(), b.strip()
-            if a and b:
-                return a, b
-    # 3. Normales Minus mit Leerzeichen ' - '
-    if " - " in line:
-        a, b = line.split(" - ", 1)
-        a, b = a.strip(), b.strip()
-        if a and b:
-            return a, b
-    # 4. Normales Minus ohne Leerzeichen '-'
-    if "-" in line:
-        a, b = line.split("-", 1)
-        a, b = a.strip(), b.strip()
-        if a and b:
-            return a, b
-    return None
-
-
-def parse_datei(path: Path) -> list[tuple[str, str]]:
-    # Liest Vokabelpaare aus Word- oder Textdatei
-    paare: list[tuple[str, str]] = []
-    if path.suffix.lower() == ".docx":
-        from docx import Document  # type: ignore[import-untyped]
-        doc = Document(str(path))
-        # 1. Tabellen mit mindestens 2 Spalten
-        for table in doc.tables:
-            for row in table.rows:
-                cells = [c.text.strip() for c in row.cells]
-                if len(cells) >= 2 and cells[0] and cells[1]:
-                    # Überschriftenzeilen wie "Vorderseite | Rückseite" ignorieren
-                    if cells[0].lower() in ["vorderseite", "wort", "frage", "begriff"]:
-                        continue
-                    paare.append((cells[0], cells[1]))
-        # 2. Falls keine Tabellen vorhanden sind, Absätze durchsuchen
-        if not paare:
-            for para in doc.paragraphs:
-                result = split_line(para.text)
-                if result:
-                    paare.append(result)
-    else:
-        # Textdatei: erst UTF-8 probieren, Fallback auf Windows-1252
+    tmp_file = DATA_FILE.with_suffix(".json.tmp")
+    try:
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump([v.to_dict() for v in vokabeln], f, ensure_ascii=False, indent=2)
+        os.replace(tmp_file, DATA_FILE)
         try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            text = path.read_text(encoding="cp1252", errors="replace")
-        for line in text.splitlines():
-            result = split_line(line)
-            if result:
-                paare.append(result)
-    return paare
+            LAST_SAVED_MTIME = DATA_FILE.stat().st_mtime
+            LAST_SAVED_TIME = time.time()
+        except Exception:
+            pass
+    except Exception:
+        if tmp_file.exists():
+            tmp_file.unlink(missing_ok=True)
+        raise
 
 
+# ── Lernalgorithmus: VokabelTrainer ──────────────────────────────────────────
 class VokabelTrainer:
+    """Zentrale Trainer-Klasse zur Verwaltung des Vokabelbestands, der Lernabfragen
+    und der Kategorien mit Undo-Historie.
+    """
     def __init__(self) -> None:
-        # Kategorien und Vokabeln automatisch aus JSON laden
         self.kategorien: dict[str, dict[str, str]] = load_kategorien()
         self.vokabeln: list[Vokabel] = load_vokabeln()
+        self._undo_stack: deque[list[Vokabel]] = deque(maxlen=30)
+
+    def reload_vokabeln(self) -> int:
+        """Lädt Vokabeln und Kategorien neu von der Festplatte."""
+        self.kategorien = load_kategorien()
+        self.vokabeln = load_vokabeln()
+        KATEGORIEN.clear()
+        KATEGORIEN.update(self.kategorien)
+        KATEGORIE_NAMEN.clear()
+        KATEGORIE_NAMEN.extend(self.kategorien.keys())
+        return len(self.vokabeln)
 
     def add_kategorie(
         self,
@@ -282,7 +423,7 @@ class VokabelTrainer:
         lbl_back: str = "Rückseite",
     ) -> bool:
         """Legt eine neue benutzerdefinierte Kategorie an."""
-        clean_name = name.strip()
+        clean_name = name.strip()[:200]  # Max 200 Zeichen für Kategorienamen
         if not clean_name or clean_name in self.kategorien:
             return False
         self.kategorien[clean_name] = {
@@ -293,7 +434,6 @@ class VokabelTrainer:
             "lbl_front":    lbl_front.strip() or "Vorderseite",
             "lbl_back":     lbl_back.strip() or "Rückseite",
         }
-        # Globale Mappings synchronisieren
         KATEGORIEN.clear()
         KATEGORIEN.update(self.kategorien)
         KATEGORIE_NAMEN.clear()
@@ -305,6 +445,9 @@ class VokabelTrainer:
         """Löscht eine benutzerdefinierte Kategorie und alle darin enthaltenen Vokabeln."""
         if name not in self.kategorien:
             return False
+        deleted_voks = [v for v in self.vokabeln if v.kategorie == name]
+        if deleted_voks:
+            self._push_undo(deleted_voks)
         del self.kategorien[name]
         self.vokabeln = [v for v in self.vokabeln if v.kategorie != name]
         save_vokabeln(self.vokabeln)
@@ -338,7 +481,7 @@ class VokabelTrainer:
         })
 
     def is_duplicate(self, front: str, kategorie: str, lang_front: str = "Englisch") -> bool:
-        # Prüft ob eine Vokabel mit gleicher Vorderseite in dieser Kategorie (und Sprache) schon existiert
+        """Prüft, ob eine Vokabel mit gleicher Vorderseite in dieser Kategorie schon existiert."""
         target = front.strip().lower()
         for v in self.vokabeln:
             if v.kategorie == kategorie and v.front.lower() == target:
@@ -359,8 +502,7 @@ class VokabelTrainer:
         return None
 
     def get_most_used_lang_pair(self) -> tuple[str, str]:
-        """Gibt die am häufigsten genutzte Sprachkombi (lang_front, lang_back) zurück.
-        Fallback: ('Englisch', 'Deutsch')."""
+        """Gibt die am häufigsten genutzte Sprachkombi (lang_front, lang_back) zurück."""
         counts: dict[tuple[str, str], int] = {}
         for v in self.vokabeln:
             if v.kategorie == "Sprache" and v.lang_front and v.lang_back:
@@ -370,6 +512,10 @@ class VokabelTrainer:
             return ("Englisch", "Deutsch")
         return max(counts.items(), key=lambda item: item[1])[0]
 
+    # Maximale Feldlängen – verhindert extrem lange Eingaben
+    _MAX_FIELD_LEN: int = 2000
+    _MAX_LANG_LEN: int = 100
+    _MAX_KAT_LEN: int = 200
 
     def add_vokabel(
         self,
@@ -379,51 +525,86 @@ class VokabelTrainer:
         lang_front: str = "Englisch",
         lang_back: str = "Deutsch",
     ) -> Vokabel | None:
-        # Fügt neue Vokabel hinzu – falls Duplikat, wird sie ignoriert und None zurückgegeben
-        clean_front = front.strip()
-        clean_back = back.strip()
+        """Fügt eine neue Vokabel hinzu. Gibt None zurück, falls sie bereits existiert."""
+        clean_front = front.strip()[: self._MAX_FIELD_LEN]
+        clean_back = back.strip()[: self._MAX_FIELD_LEN]
+        clean_kat = str(kategorie).strip()[: self._MAX_KAT_LEN] or "Sprache"
+        clean_lf = lang_front.strip()[: self._MAX_LANG_LEN] or "Englisch"
+        clean_lb = lang_back.strip()[: self._MAX_LANG_LEN] or "Deutsch"
         if not clean_front or not clean_back:
             return None
-        if self.is_duplicate(clean_front, kategorie, lang_front):
+        if self.is_duplicate(clean_front, clean_kat, clean_lf):
             return None
         vok = Vokabel(
             front=clean_front,
             back=clean_back,
-            kategorie=kategorie,
-            lang_front=lang_front.strip() or "Englisch",
-            lang_back=lang_back.strip() or "Deutsch",
+            kategorie=clean_kat,
+            lang_front=clean_lf,
+            lang_back=clean_lb,
         )
         self.vokabeln.append(vok)
         self.save()
         return vok
 
+    def _push_undo(self, deleted: list[Vokabel]) -> None:
+        """Legt gelöschte Vokabeln auf den Undo-Stapel (maximal 30 Schritte, O(1))."""
+        if deleted:
+            self._undo_stack.append(list(deleted))  # deque(maxlen=30) entfernt älteste Einträge automatisch
+
+    def can_undo(self) -> bool:
+        """Prüft, ob gelöschte Vokabeln wiederhergestellt werden können."""
+        return len(self._undo_stack) > 0
+
+    def undo_last_delete(self) -> int:
+        """Stellt die zuletzt gelöschten Vokabeln wieder her."""
+        if not self._undo_stack:
+            return 0
+        to_restore = self._undo_stack.pop()
+        restored_count = 0
+        for v in to_restore:
+            if not self.is_duplicate(v.front, v.kategorie, v.lang_front):
+                self.vokabeln.append(v)
+                restored_count += 1
+        if restored_count > 0:
+            self.save()
+        return restored_count
+
     def delete_vokabel(self, vokabel: Vokabel) -> None:
-        # Einzelne Vokabel löschen
+        """Einzelne Vokabel löschen."""
         if vokabel in self.vokabeln:
             self.vokabeln.remove(vokabel)
+            self._push_undo([vokabel])
             self.save()
 
     def delete_vokabeln(self, to_delete: list[Vokabel]) -> None:
-        # Mehrere Vokabeln gleichzeitig löschen
+        """Mehrere Vokabeln gleichzeitig löschen."""
+        actually_deleted: list[Vokabel] = []
         for v in to_delete:
             if v in self.vokabeln:
                 self.vokabeln.remove(v)
-        self.save()
+                actually_deleted.append(v)
+        if actually_deleted:
+            self._push_undo(actually_deleted)
+            self.save()
 
     def delete_all(self, kategorie: str | None = None) -> None:
-        # Alle Vokabeln (oder alle einer Kategorie) löschen
+        """Alle Vokabeln (oder alle einer bestimmten Kategorie) löschen."""
         if kategorie:
+            actually_deleted = [v for v in self.vokabeln if v.kategorie == kategorie]
             self.vokabeln = [v for v in self.vokabeln if v.kategorie != kategorie]
         else:
+            actually_deleted = list(self.vokabeln)
             self.vokabeln = []
-        self.save()
+        if actually_deleted:
+            self._push_undo(actually_deleted)
+            self.save()
 
     def save(self) -> None:
-        # Speichert den aktuellen Stand in die JSON-Datei
+        """Speichert den aktuellen Stand atomar in JSON."""
         save_vokabeln(self.vokabeln)
 
     def get_pool(self, kategorie: list[str] | set[str] | str | None = None) -> list[Vokabel]:
-        # Vokabeln zurückgeben, optional nach Kategorie(n) gefiltert (unterstützt Einzel- und Mehrfachauswahl)
+        """Gibt Vokabeln zurück, optional nach Kategorie(n) gefiltert."""
         if kategorie is None:
             return list(self.vokabeln)
         if isinstance(kategorie, str):
@@ -436,8 +617,9 @@ class VokabelTrainer:
         kategorie: list[str] | set[str] | str | None = None,
         exclude: Vokabel | None = None,
     ) -> Vokabel:
-        # Gewichtete Zufallsauswahl – schwache Vokabeln häufiger
-        # exclude: diese Vokabel nicht nehmen (max-2-Streak-Schutz), sofern Pool > 1
+        """Wählt per gewichtetem Zufallsprinzip die nächste Karte (schwächere Vokabeln häufiger).
+        Streak-Schutz verhindert, dass dieselbe Karte dreimal hintereinander kommt.
+        """
         pool = self.get_pool(kategorie)
         if not pool:
             msg = "in den ausgewählten Kategorien" if isinstance(kategorie, (list, set)) else (f"in {kategorie}" if kategorie else "")
@@ -450,260 +632,8 @@ class VokabelTrainer:
         return random.choices(pool, weights=weights, k=1)[0]
 
     def record_result(self, vokabel: Vokabel, is_correct: bool) -> None:
-        # Ergebnis eintragen und speichern
+        """Ergebnis erfassen und sofort persistent speichern."""
         vokabel.attempts += 1
         if is_correct:
             vokabel.correct += 1
         self.save()
-
-
-def import_datei(
-    trainer: VokabelTrainer,
-    path: Path,
-    kategorie: str,
-    lang_front: str = "Englisch",
-    lang_back: str = "Deutsch",
-) -> tuple[int, int]:
-    # Importiert Datei in Trainer; gibt (anzahl_neu, anzahl_duplikate) zurück
-    paare = parse_datei(path)
-    neu_count = 0
-    dup_count = 0
-    for front, back in paare:
-        res = trainer.add_vokabel(front, back, kategorie, lang_front, lang_back)
-        if res is not None:
-            neu_count += 1
-        else:
-            dup_count += 1
-    return neu_count, dup_count
-
-
-# ── Intelligente Antworterkennung & Fehlertoleranz ────────────────────────────
-STOPWORDS: set[str] = {
-    "der", "die", "das", "ein", "eine", "einer", "eines", "einem", "einen",
-    "the", "a", "an", "to", "of", "in", "on", "at", "by", "for", "with", "mit",
-    "und", "and", "or", "oder", "sich", "zu", "von", "aus", "den", "dem", "des",
-}
-
-
-def damerau_levenshtein(s1: str, s2: str) -> int:
-    """Berechnet die Damerau-Levenshtein-Distanz (Einfügen, Löschen, Ersetzen, Dreher)."""
-    d: dict[tuple[int, int], int] = {}
-    len1, len2 = len(s1), len(s2)
-    for i in range(-1, len1 + 1):
-        d[(i, -1)] = i + 1
-    for j in range(-1, len2 + 1):
-        d[(-1, j)] = j + 1
-    for i in range(len1):
-        for j in range(len2):
-            cost = 0 if s1[i] == s2[j] else 1
-            d[(i, j)] = min(
-                d[(i - 1, j)] + 1,
-                d[(i, j - 1)] + 1,
-                d[(i - 1, j - 1)] + cost,
-            )
-            if i > 0 and j > 0 and s1[i] == s2[j - 1] and s1[i - 1] == s2[j]:
-                d[(i, j)] = min(d[(i, j)], d[(i - 2, j - 2)] + 1)
-    return d[(len1 - 1, len2 - 1)]
-
-
-def max_allowed_typos(word_len: int) -> int:
-    """Erlaubte Tippfehler: 0 bei <=3 Zeichen, 1 bei 4-7 Zeichen, 2 bei >=8 Zeichen."""
-    if word_len <= 3:
-        return 0
-    if word_len <= 7:
-        return 1
-    return 2
-
-
-def clean_matching_str(s: str) -> str:
-    """Bereinigt Klammern, Satzzeichen und vereinheitlicht Leerzeichen."""
-    s = re.sub(r"[\(\)\[\]\{\}<>„“\"\'`´]", "", s)
-    s = re.sub(r"[.,!?;:]", " ", s)
-    s = re.sub(r"\s*([+=])\s*", r" \1 ", s)
-    return " ".join(s.lower().split())
-
-
-def _expand_brackets(text: str) -> set[str]:
-    """Generiert alle Kombinationen von Klammer-Inhalten (mit Inhalt / ohne Inhalt)."""
-    pattern = re.compile(r"[\(\[\{]([^\)\]\}]*)[\)\]\}]")
-
-    def _recurse(curr: str) -> set[str]:
-        m = pattern.search(curr)
-        if not m:
-            return {curr}
-        content = m.group(1)
-        start, end = m.span()
-        opt_a = curr[:start] + content + curr[end:]
-        opt_b = curr[:start] + curr[end:]
-        res = _recurse(opt_a) | _recurse(opt_b)
-        if "-" in content:
-            opt_c = curr[:start] + content.replace("-", "") + curr[end:]
-            res |= _recurse(opt_c)
-        return res
-
-    raw_res = _recurse(text)
-    out: set[str] = set()
-    for r in raw_res:
-        cleaned = " ".join(r.split())
-        if cleaned:
-            out.add(cleaned)
-    return out
-
-
-def _expand_slash_forms(text: str) -> set[str]:
-    """Erweitert Formen mit Schrägstrichen (z. B. thai(länder/in), ein/e, Erwachsene/r, der/die/das)."""
-    forms = {text}
-    m_in = re.search(r"(\w+)/in\b", text, re.IGNORECASE)
-    if m_in:
-        base = m_in.group(1)
-        forms.add(text[:m_in.start()] + base + text[m_in.end():])
-        forms.add(text[:m_in.start()] + base + "in" + text[m_in.end():])
-
-    m_e = re.search(r"(\w+)/e\b", text, re.IGNORECASE)
-    if m_e:
-        base = m_e.group(1)
-        forms.add(text[:m_e.start()] + base + text[m_e.end():])
-        forms.add(text[:m_e.start()] + base + "e" + text[m_e.end():])
-
-    m_rs = re.search(r"(\w+)/r/s\b", text, re.IGNORECASE)
-    if m_rs:
-        base = m_rs.group(1)
-        forms.add(text[:m_rs.start()] + base + text[m_rs.end():])
-        forms.add(text[:m_rs.start()] + base + "r" + text[m_rs.end():])
-        forms.add(text[:m_rs.start()] + base + "s" + text[m_rs.end():])
-
-    m_r_s = re.search(r"(\w+)r/s\b", text, re.IGNORECASE)
-    if m_r_s:
-        stem = m_r_s.group(1)
-        forms.add(text[:m_r_s.start()] + stem + text[m_r_s.end():])
-        forms.add(text[:m_r_s.start()] + stem + "r" + text[m_r_s.end():])
-        forms.add(text[:m_r_s.start()] + stem + "s" + text[m_r_s.end():])
-
-    m_r = re.search(r"(\w+)/r\b", text, re.IGNORECASE)
-    if m_r:
-        base = m_r.group(1)
-        forms.add(text[:m_r.start()] + base + text[m_r.end():])
-        forms.add(text[:m_r.start()] + base + "r" + text[m_r.end():])
-
-    if "/" in text and not any([m_in, m_e, m_rs, m_r_s, m_r]):
-        forms.add(text.replace("/", " "))
-        slash_words = text.split("/")
-        for w in slash_words:
-            w_str = w.strip()
-            if len(w_str) >= 2 or w_str in {"a", "i", "o", "u"}:
-                forms.add(w_str)
-
-    return {f.strip() for f in forms if f.strip()}
-
-
-def get_answer_candidates(expected: str) -> tuple[list[str], list[str], list[str]]:
-    """Erzeugt Kandidaten-Vollformen, Synonym-Teile und Einzelwörter aus der Musterlösung."""
-    raw = expected.strip().lower()
-    full_forms: set[str] = set()
-    parts: set[str] = set()
-    all_words: set[str] = set()
-
-    bracket_variants = _expand_brackets(raw)
-
-    for bv in bracket_variants:
-        for sf in _expand_slash_forms(bv):
-            c = clean_matching_str(sf)
-            if c:
-                full_forms.add(c)
-                parts.add(c)
-                for w in c.split():
-                    all_words.add(w)
-
-        sub_items = re.split(r"[,;]+|\s+-\s+|\boder\b|\bor\b", bv)
-        for item in sub_items:
-            for sf in _expand_slash_forms(item):
-                c = clean_matching_str(sf)
-                if c:
-                    parts.add(c)
-                    for w in c.split():
-                        all_words.add(w)
-            if "/" in item:
-                for slash_p in item.split("/"):
-                    c = clean_matching_str(slash_p)
-                    if c:
-                        parts.add(c)
-                        for w in c.split():
-                            all_words.add(w)
-
-    return list(full_forms), list(parts), list(all_words)
-
-
-def check_answer(user_input: str, expected: str) -> tuple[bool, bool]:
-    """Prüft eine Benutzereingabe gegen die erwartete Antwort.
-    Gibt (ist_richtig, ist_tippfehler_oder_teilantwort) zurück.
-    """
-    u_clean = clean_matching_str(user_input)
-    if not u_clean:
-        return False, False
-
-    full_forms, parts, all_words = get_answer_candidates(expected)
-    u_words = u_clean.split()
-
-    # 1. Exakte Übereinstimmung mit Vollform oder Synonym-Teil
-    if u_clean in full_forms or u_clean in parts:
-        return True, False
-
-    # 2. Ein einzelnes Wort von mehreren reicht (außer reine Stoppwörter)
-    if len(u_words) == 1 and u_words[0] in all_words:
-        if u_words[0] not in STOPWORDS:
-            return True, False
-
-    # 3. Beliebige Wortreihenfolge und Teilmengen (z. B. stellen legen tun)
-    if len(u_words) >= 1:
-        for p in list(full_forms) + list(parts):
-            p_words = p.split()
-            if len(p_words) > 1:
-                if set(u_words) == set(p_words):
-                    return True, False
-                if len(u_words) > 1 and set(u_words).issubset(set(p_words)):
-                    if any(w not in STOPWORDS for w in u_words):
-                        return True, False
-
-    # 4. Tippfehler-Erkennung (Fuzzy Matching)
-    # 4a. Auf Vollformen oder Synonym-Teilen
-    for target in list(full_forms) + list(parts):
-        if not target:
-            continue
-        limit = max_allowed_typos(len(target))
-        if limit > 0 and damerau_levenshtein(u_clean, target) <= limit:
-            return True, True
-
-    # 4b. Auf Einzelwörtern aus der Musterlösung
-    if len(u_words) == 1:
-        w = u_words[0]
-        for tw in all_words:
-            if tw in STOPWORDS:
-                continue
-            limit = max_allowed_typos(len(tw))
-            if limit > 0 and damerau_levenshtein(w, tw) <= limit:
-                return True, True
-
-    # 4c. Mehrere Wörter mit Tippfehlern in beliebiger Reihenfolge
-    if len(u_words) > 1:
-        for p in list(full_forms) + list(parts):
-            p_words = p.split()
-            if len(p_words) == len(u_words):
-                used_indices: set[int] = set()
-                matched_all = True
-                for uw in u_words:
-                    found = False
-                    for idx, pw in enumerate(p_words):
-                        if idx in used_indices:
-                            continue
-                        lim = max_allowed_typos(len(pw))
-                        if damerau_levenshtein(uw, pw) <= lim:
-                            used_indices.add(idx)
-                            found = True
-                            break
-                    if not found:
-                        matched_all = False
-                        break
-                if matched_all:
-                    return True, True
-
-    return False, False
