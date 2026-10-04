@@ -963,6 +963,10 @@ class VerwaltungView(QWidget):
             self._trainer.delete_vokabel(vok)
             self._load_list()
             self._update_undo_btn()
+            if self._table.rowCount() > 0:
+                target_r = max(0, min(row, self._table.rowCount() - 1))
+                self._table.setCurrentCell(target_r, 1)
+                self._table.setFocus()
 
     def _update_filter_combo(self) -> None:
         cur_data = self._filter_combo.currentData()
@@ -1127,6 +1131,10 @@ class VerwaltungView(QWidget):
         dlg = EditVokabelDialog(vok, parent=self, trainer=self._trainer)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._load_list()
+            if self._table.rowCount() > 0:
+                target_r = max(0, min(row, self._table.rowCount() - 1))
+                self._table.setCurrentCell(target_r, 1)
+                self._table.setFocus()
 
     def _hinzufuegen(self) -> None:
         try:

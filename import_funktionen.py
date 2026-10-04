@@ -83,7 +83,21 @@ def split_line(line: str) -> tuple[str, str] | None:
         if a and b:
             return a, b
 
-    # 5. Nacktes Minus '-' (Mindestlänge verhindert Trennung bei 'anti-virus' etc.)
+    # 5. Gleichheitszeichen ' = ' (z. B. apple = Apfel)
+    if " = " in line:
+        a, b = line.split(" = ", 1)
+        a, b = a.strip(), b.strip()
+        if a and b:
+            return a, b
+
+    # 6. Doppelpunkt mit Leerzeichen ': ' (z. B. Begriff: Bedeutung)
+    if ": " in line and not line.lower().startswith(("http://", "https://", "ftp://")):
+        a, b = line.split(": ", 1)
+        a, b = a.strip(), b.strip()
+        if a and b:
+            return a, b
+
+    # 7. Nacktes Minus '-' (Mindestlänge verhindert Trennung bei 'anti-virus' etc.)
     if "-" in line:
         a, b = line.split("-", 1)
         a, b = a.strip(), b.strip()

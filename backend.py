@@ -577,13 +577,11 @@ class VokabelTrainer:
             self.save()
 
     def delete_vokabeln(self, to_delete: list[Vokabel]) -> None:
-        """Mehrere Vokabeln gleichzeitig löschen."""
-        actually_deleted: list[Vokabel] = []
-        for v in to_delete:
-            if v in self.vokabeln:
-                self.vokabeln.remove(v)
-                actually_deleted.append(v)
+        """Mehrere Vokabeln gleichzeitig löschen (O(N) durch Set-Lookup)."""
+        to_del_set = set(to_delete)
+        actually_deleted = [v for v in self.vokabeln if v in to_del_set]
         if actually_deleted:
+            self.vokabeln = [v for v in self.vokabeln if v not in to_del_set]
             self._push_undo(actually_deleted)
             self.save()
 

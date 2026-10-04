@@ -47,24 +47,40 @@ STOPWORDS: set[str] = {
 
 
 def damerau_levenshtein(s1: str, s2: str) -> int:
-    """Berechnet die Damerau-Levenshtein-Distanz (Einfügen, Löschen, Ersetzen, Dreher)."""
-    d: dict[tuple[int, int], int] = {}
+    """Berechnet die Damerau-Levenshtein-Distanz (Einfügen, Löschen, Ersetzen, Dreher).
+    Hochperformante 2D-Matrix-Implementierung mit O(N*M)-Garantie.
+    """
     len1, len2 = len(s1), len(s2)
-    for i in range(-1, len1 + 1):
-        d[(i, -1)] = i + 1
-    for j in range(-1, len2 + 1):
-        d[(-1, j)] = j + 1
-    for i in range(len1):
-        for j in range(len2):
-            cost = 0 if s1[i] == s2[j] else 1
-            d[(i, j)] = min(
-                d[(i - 1, j)] + 1,
-                d[(i, j - 1)] + 1,
-                d[(i - 1, j - 1)] + cost,
+    if len1 == 0:
+        return len2
+    if len2 == 0:
+        return len1
+    if abs(len1 - len2) > 3:
+        return abs(len1 - len2)
+
+    d = [[0] * (len2 + 2) for _ in range(len1 + 2)]
+    max_dist = len1 + len2
+    d[0][0] = max_dist
+
+    for i in range(len1 + 1):
+        d[i + 1][0] = max_dist
+        d[i + 1][1] = i
+    for j in range(len2 + 1):
+        d[0][j + 1] = max_dist
+        d[1][j + 1] = j
+
+    for i in range(1, len1 + 1):
+        for j in range(1, len2 + 1):
+            cost = 0 if s1[i - 1] == s2[j - 1] else 1
+            d[i + 1][j + 1] = min(
+                d[i + 1][j] + 1,       # Einfügen
+                d[i][j + 1] + 1,       # Löschen
+                d[i][j] + cost,        # Ersetzen
             )
-            if i > 0 and j > 0 and s1[i] == s2[j - 1] and s1[i - 1] == s2[j]:
-                d[(i, j)] = min(d[(i, j)], d[(i - 2, j - 2)] + 1)
-    return d[(len1 - 1, len2 - 1)]
+            if i > 1 and j > 1 and s1[i - 1] == s2[j - 2] and s1[i - 2] == s2[j - 1]:
+                d[i + 1][j + 1] = min(d[i + 1][j + 1], d[i - 1][j - 1] + 1)
+
+    return d[len1 + 1][len2 + 1]
 
 
 def max_allowed_typos(word_len: int) -> int:
@@ -366,9 +382,9 @@ class AbfrageView(QWidget):
         card_layout.addWidget(self._input)
         card_layout.addSpacing(50)
 
-        self._hint_lbl = QLabel("💡 Drücke Enter zum Bestätigen und Weitergehen")
+        self._hint_lbl = QLabel("💡 Enter / Leertaste = Weiter | F2 = Zwischenstand vorlesen | Strg+1..4 = Navigation")
         self._hint_lbl.setObjectName("enterHint")
-        self._hint_lbl.setAccessibleName(" ")
+        self._hint_lbl.setAccessibleName(" Hinweis: Enter oder Leertaste zum Weitergehen, F2 für Zwischenstand, Strg plus 1 bis 4 zum Wechseln der Ansicht")
         card_layout.addWidget(self._hint_lbl)
         card_layout.addSpacing(22)
 
@@ -391,20 +407,37 @@ class AbfrageView(QWidget):
         card_layout.addStretch(1)
         root.addWidget(self._card_frame, stretch=1)
 
+    def _announce_current_stats(self) -> None:
+        """Liest den aktuellen Zwischenstand laut für Screenreader vor (Taste F2)."""
+        falsch = self._session_total - self._session_richtig
+        pct = (self._session_richtig / self._session_total * 100.0) if self._session_total > 0 else 0.0
+        msg = f"Zwischenstand: {self._session_richtig} richtig, {falsch} falsch von {self._session_total} Abfragen. Erfolgsquote: {pct:.0f} Prozent."
+        self._stats_lbl.setAccessibleName(f" {msg}")
+        if self._waiting_for_next and self._feedback_lbl.isVisible():
+            self._feedback_lbl.setAccessibleName(f" {msg}")
+            self._feedback_lbl.setFocus()
+        else:
+            self._input.set_feedback_speech(msg)
+            self._input.setFocus()
+
     def keyPressEvent(self, a0: QKeyEvent | None) -> None:
         if a0 is None:
             super().keyPressEvent(a0)
             return
+        if a0.key() == Qt.Key.Key_F2:
+            self._announce_current_stats()
+            a0.accept()
+            return
         if not self._trainer.get_pool(self._kategorien):
             super().keyPressEvent(a0)
             return
-        if a0.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        if a0.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             if self._waiting_for_next and (time.time() - self._last_eval_time > 0.3):
                 self._advance_timer.stop()
                 self._lade_karte()
                 a0.accept()
                 return
-            elif not self._waiting_for_next:
+            elif not self._waiting_for_next and a0.key() != Qt.Key.Key_Space:
                 self._input.setFocus()
                 a0.accept()
                 return

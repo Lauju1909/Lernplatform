@@ -139,11 +139,20 @@ def _ensure_self_contained_folder() -> None:
     except Exception:
         return
 
-    # 3. Alte lose EXE löschen und neue EXE im Ordner starten
-    clean_cmd = f'ping 127.0.0.1 -n 2 >nul & del /f /q "{current_exe}" & start "" "{target_exe}"'
+    # 3. Alte lose EXE löschen und neue EXE im Ordner starten (sicher via temporärem Skript)
     try:
+        temp_dir = Path(os.environ.get("TEMP", str(target_dir)))
+        temp_bat = temp_dir / f"lernplatform_setup_{os.getpid()}.bat"
+        temp_bat.write_text(
+            f"@echo off\r\n"
+            f"timeout /t 1 /nobreak >nul\r\n"
+            f'del /f /q "{current_exe}" >nul 2>&1\r\n'
+            f'start "" "{target_exe}"\r\n'
+            f'del "%~f0" >nul 2>&1\r\n',
+            encoding="utf-8",
+        )
         subprocess.Popen(
-            ["cmd.exe", "/c", clean_cmd],
+            ["cmd.exe", "/c", str(temp_bat)],
             shell=False,
             creationflags=0x00000008,
             close_fds=True,
@@ -413,9 +422,61 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(self._stack, stretch=1)
 
+        # Globale Barrierefreiheits-Shortcuts zum schnellen Wechseln der Ansichten
+        self._sc_abfrage = QShortcut(QKeySequence("Ctrl+1"), self)
+        self._sc_abfrage.activated.connect(partial(self._navigate, 0))
+        self._sc_kategorien = QShortcut(QKeySequence("Ctrl+2"), self)
+        self._sc_kategorien.activated.connect(partial(self._navigate, 1))
+        self._sc_verwaltung = QShortcut(QKeySequence("Ctrl+3"), self)
+        self._sc_verwaltung.activated.connect(partial(self._navigate, 2))
+        self._sc_einstellungen = QShortcut(QKeySequence("Ctrl+4"), self)
+        self._sc_einstellungen.activated.connect(partial(self._navigate, 3))
+
+        # Alt+1..4 als intuitive Alternative
+        self._alt_scs: list[QShortcut] = []
+        for i, key in enumerate(["Alt+1", "Alt+2", "Alt+3", "Alt+4"]):
+            sc = QShortcut(QKeySequence(key), self)
+            sc.activated.connect(partial(self._navigate, i))
+            self._alt_scs.append(sc)
+
+        # F1 und Ctrl+H für Barrierefreiheits- & Tastatur-Hilfe
+        self._shortcut_help = QShortcut(QKeySequence("F1"), self)
+        self._shortcut_help.activated.connect(self._show_help_dialog)
+        self._shortcut_help_h = QShortcut(QKeySequence("Ctrl+H"), self)
+        self._shortcut_help_h.activated.connect(self._show_help_dialog)
+
         # Easter Egg Shortcut (Strg + Shift + E)
         self._shortcut_easteregg = QShortcut(QKeySequence("Ctrl+Shift+E"), self)
         self._shortcut_easteregg.activated.connect(self._show_easter_egg_dialog)
+
+    def _show_help_dialog(self) -> None:
+        """Zeigt ein barrierefreies Dialogfenster mit allen Tastaturkürzeln."""
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle("Tastaturbefehle & Barrierefreiheit (F1)")
+        dlg.setIcon(QMessageBox.Icon.Information)
+        help_text = (
+            "♿ TASTENKOMBINATIONEN FÜR SCREENREADER & TASTATUR:\n\n"
+            "• Strg + 1 (oder Alt + 1):  Zur Abfrage springen\n"
+            "• Strg + 2 (oder Alt + 2):  Zu den Kategorien springen\n"
+            "• Strg + 3 (oder Alt + 3):  Zur Vokabelverwaltung springen\n"
+            "• Strg + 4 (oder Alt + 4):  Zu den Einstellungen springen\n\n"
+            "▶ IM ABFRAGEMODUS:\n"
+            "• Enter / Leertaste:         Eingabe prüfen bzw. zur nächsten Vokabel gehen\n"
+            "• F2:                        Aktuellen Zwischenstand (richtig/falsch/Quote) vorlesen\n\n"
+            "📋 IN DER VOKABELVERWALTUNG:\n"
+            "• Strg + F:                  Direkt ins Suchfeld springen\n"
+            "• Pfeiltasten Oben/Unten:    Durch Vokabeln navigieren\n"
+            "• Enter / Doppelklick:       Ausgewählte Vokabel bearbeiten\n"
+            "• Entf:                      Ausgewählte Vokabel löschen\n"
+            "• Strg + Z:                  Gelöschte Vokabeln wiederherstellen (Rückgängig)\n"
+            "• Tab / Umschalt+Tab:        Zum nächsten/vorherigen Steuerelement springen\n\n"
+            "• F1:                        Diese Hilfe jederzeit erneut öffnen"
+        )
+        dlg.setText(help_text)
+        dlg.setAccessibleName(" Hilfe für Tastaturbefehle und Barrierefreiheit geöffnet. Drücke Enter zum Schließen.")
+        btn = dlg.addButton("Schließen (Enter)", QMessageBox.ButtonRole.AcceptRole)
+        btn.setDefault(True)
+        dlg.exec()
 
     def _show_easter_egg_dialog(self) -> None:
         """Zeigt das geheime Entwickler-Easter-Egg-Fenster."""
