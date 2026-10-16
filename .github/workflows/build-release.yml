@@ -54,7 +54,7 @@ jobs:
             fi
           done
           if [ -f main.py ]; then
-            sed -i -E "s/version="%\(prog\)s [0-9.]+"/version="%\(prog\)s $NEW_VER"/g" main.py
+            sed -i -E "s/app_version = \"[0-9.]+\"/app_version = \"$NEW_VER\"/g" main.py
           fi
 
           echo "version=$NEW_VER" >> $GITHUB_OUTPUT
