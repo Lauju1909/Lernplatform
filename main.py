@@ -539,7 +539,7 @@ def _parse_arguments() -> argparse.Namespace:
         prog="Lernplatform",
         description="Barrierefreier, intelligenter Vokabel- und Begriffstrainer",
     )
-    app_version = "1.2.4"
+    app_version = "1.2.5"
     try:
         ver_file = Path(__file__).resolve().parent / "version.json"
         if ver_file.exists():
