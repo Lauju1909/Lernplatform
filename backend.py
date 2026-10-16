@@ -148,7 +148,7 @@ DEFAULT_VOKABELN: list[dict[str, Any]] = [
 
 
 # ── Datenmodell: Vokabel ───────────────────────────────────────────────────────
-@dataclass
+@dataclass(unsafe_hash=True)
 class Vokabel:
     """Repräsentiert eine einzelne Lernkarte."""
     front:      str
@@ -226,8 +226,13 @@ class Vokabel:
 
         lang_front = d.get("lang_front")
         lang_back = d.get("lang_back")
-        if not lang_front or not lang_back:
-            if "en" in d and "de" in d:
+        kategorie = d.get("kategorie", "Sprache")
+
+        if lang_front is None or lang_back is None:
+            if kategorie in ("Fachwörter", "Formeln", "Befehle"):
+                lang_front = "" if lang_front is None else str(lang_front).strip()
+                lang_back = "" if lang_back is None else str(lang_back).strip()
+            elif "en" in d and "de" in d:
                 lang_front, lang_back = "Englisch", "Deutsch"
             elif "fr" in d and "de" in d:
                 lang_front, lang_back = "Französisch", "Deutsch"
@@ -238,17 +243,18 @@ class Vokabel:
             elif "it" in d and "de" in d:
                 lang_front, lang_back = "Italienisch", "Deutsch"
             else:
-                lang_front = lang_front or "Englisch"
-                lang_back = lang_back or "Deutsch"
-
-        kategorie = d.get("kategorie", "Sprache")
+                lang_front = str(lang_front).strip() if lang_front else "Englisch"
+                lang_back = str(lang_back).strip() if lang_back else "Deutsch"
+        else:
+            lang_front = str(lang_front).strip()
+            lang_back = str(lang_back).strip()
 
         return cls(
             front=str(front).strip(),
             back=str(back).strip(),
             kategorie=str(kategorie).strip() or "Sprache",
-            lang_front=str(lang_front).strip() or "Englisch",
-            lang_back=str(lang_back).strip() or "Deutsch",
+            lang_front=lang_front,
+            lang_back=lang_back,
             attempts=attempts,
             correct=correct,
         )
@@ -577,11 +583,12 @@ class VokabelTrainer:
             self.save()
 
     def delete_vokabeln(self, to_delete: list[Vokabel]) -> None:
-        """Mehrere Vokabeln gleichzeitig löschen (O(N) durch Set-Lookup)."""
-        to_del_set = set(to_delete)
-        actually_deleted = [v for v in self.vokabeln if v in to_del_set]
+        """Mehrere Vokabeln gleichzeitig löschen (sicher und hash-resistent)."""
+        to_del_ids = {id(v) for v in to_delete}
+        actually_deleted = [v for v in self.vokabeln if id(v) in to_del_ids or v in to_delete]
         if actually_deleted:
-            self.vokabeln = [v for v in self.vokabeln if v not in to_del_set]
+            del_set_ids = {id(v) for v in actually_deleted}
+            self.vokabeln = [v for v in self.vokabeln if id(v) not in del_set_ids]
             self._push_undo(actually_deleted)
             self.save()
 

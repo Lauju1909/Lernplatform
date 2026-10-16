@@ -584,6 +584,7 @@ class AbfrageView(QWidget):
         else:
             settings = self._settings
             if settings.get("direction_enabled", False):
+                self._reverse = (settings.get("direction", "front_to_back") == "back_to_front")
                 self._update_dir_btn(settings, self._aktuelle)
             else:
                 self._dir_btn.setText("🔀  Gemischt")

@@ -14,6 +14,8 @@ automatisch online übersetzt und direkt in die Lernplatform (vokabeln.json) imp
 from __future__ import annotations
 
 import os
+import sys
+import subprocess
 import re
 import time
 import json
@@ -21,6 +23,17 @@ import logging
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+
+def _open_file_in_default_app(file_path: Path | str) -> None:
+    """Öffnet eine Datei plattformübergreifend in der Standardanwendung."""
+    p = str(file_path)
+    if sys.platform == "win32":
+        os.startfile(p)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", p])
+    else:
+        subprocess.Popen(["xdg-open", p])
 
 from PyQt6.QtCore import Qt, QObject, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QFont, QGuiApplication
@@ -493,7 +506,7 @@ class WordCompanionDialog(QDialog):
     def _open_in_word(self) -> None:
         """Öffnet das Dokument erneut in Microsoft Word."""
         try:
-            os.startfile(str(self._path))
+            _open_file_in_default_app(self._path)
         except Exception as exc:
             QMessageBox.critical(self, "Fehler", f"Word konnte nicht gestartet werden:\n{exc}")
 
@@ -684,7 +697,7 @@ def open_word_integration(
 
     # In Microsoft Word öffnen
     try:
-        os.startfile(str(docx_file))
+        _open_file_in_default_app(docx_file)
     except Exception as exc:
         if parent:
             QMessageBox.critical(parent, "Fehler", f"Microsoft Word konnte nicht gestartet werden:\n{exc}")

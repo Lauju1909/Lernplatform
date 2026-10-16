@@ -654,7 +654,7 @@ class DeleteDialog(QDialog):
                     ]
             self._list.clear()
             for vok in pool:
-                icon = KATEGORIEN.get(vok.kategorie, {}).get("icon", "")
+                icon = self._trainer.get_kategorie_info(vok.kategorie).get("icon", "")
                 lang_tag = f" [{vok.lang_front} → {vok.lang_back}]" if vok.kategorie == "Sprache" and vok.lang_front else ""
                 text = f"{icon}{lang_tag}  {vok.front}  →  {vok.back}"
                 if vok.attempts > 0:

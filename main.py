@@ -92,7 +92,12 @@ def _write_default_json_files(target_dir: Path) -> None:
     if not target_kat.exists():
         target_kat.write_text("{}", encoding="utf-8")
     if not target_vok.exists():
-        target_vok.write_text("[]", encoding="utf-8")
+        try:
+            from backend import DEFAULT_VOKABELN
+            import json
+            target_vok.write_text(json.dumps(DEFAULT_VOKABELN, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            target_vok.write_text("[]", encoding="utf-8")
 
 
 def _ensure_self_contained_folder() -> None:
@@ -102,7 +107,7 @@ def _ensure_self_contained_folder() -> None:
     2. Schreibt die 2 JSON-Dateien (vokabeln.json und kategorien.json) dort hinein
     3. Kopiert die EXE in diesen Ordner, löscht die lose Datei und startet die App
     """
-    if not getattr(sys, "frozen", False):
+    if not getattr(sys, "frozen", False) or sys.platform != "win32":
         return
 
     current_exe = Path(sys.executable).resolve()
@@ -534,10 +539,20 @@ def _parse_arguments() -> argparse.Namespace:
         prog="Lernplatform",
         description="Barrierefreier, intelligenter Vokabel- und Begriffstrainer",
     )
+    app_version = "1.2.4"
+    try:
+        ver_file = Path(__file__).resolve().parent / "version.json"
+        if ver_file.exists():
+            import json
+            data = json.loads(ver_file.read_text(encoding="utf-8"))
+            app_version = data.get("version", app_version)
+    except Exception:
+        pass
+
     parser.add_argument(
         "--version", "-v",
         action="version",
-        version="%(prog)s 2.5",
+        version=f"%(prog)s {app_version}",
         help="Programmversion anzeigen und beenden",
     )
     parser.add_argument(
