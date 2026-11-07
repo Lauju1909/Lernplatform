@@ -109,3 +109,37 @@ pub extern "C" fn rust_lp_file_hash(path_ptr: *const c_char) -> u64 {
         Err(_) => 0,
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_levenshtein_and_similarity_unicode() {
+        assert_eq!(levenshtein_distance("Haus", "haus"), 0);
+        assert_eq!(levenshtein_distance("Äpfel", "Apfel"), 1);
+        assert_eq!(similarity_percent("business", "business"), 100);
+        assert!(similarity_percent("entrepreneur", "enterpreneur") >= 80);
+        assert_eq!(similarity_percent("", ""), 100);
+    }
+
+    #[test]
+    fn test_leitner_weight_progression() {
+        let w_initial = calculate_leitner_weight(0, 0, 0);
+        let w_wrong = calculate_leitner_weight(0, 3, 0);
+        let w_mastered = calculate_leitner_weight(10, 0, 5);
+        assert!(w_wrong > w_initial);
+        assert!(w_mastered < w_initial);
+        assert!(w_mastered >= 0.05);
+    }
+
+    #[test]
+    fn test_fnv1a_integrity() {
+        let h1 = fnv1a_hash(b"vokabeln.json");
+        let h2 = fnv1a_hash(b"vokabeln.json");
+        let h3 = fnv1a_hash(b"kategorien.json");
+        assert_eq!(h1, h2);
+        assert_ne!(h1, h3);
+    }
+}
