@@ -1,0 +1,22 @@
+[package]
+name = "lernplatform"
+version = "2.5.0"
+edition = "2021"
+authors = ["Lauju1909"]
+description = "Lernplatform - Native Rust Leitner, Levenshtein & Integrity Core"
+
+[lib]
+name = "lernplatform_core"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "Lernplatform_Rust"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
